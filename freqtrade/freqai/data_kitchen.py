@@ -1,3 +1,5 @@
+from sklearnex import patch_sklearn
+patch_sklearn()
 import copy
 import logging
 import shutil

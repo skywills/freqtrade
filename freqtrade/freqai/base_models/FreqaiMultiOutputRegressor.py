@@ -1,3 +1,5 @@
+from sklearnex import patch_sklearn
+patch_sklearn()
 from joblib import Parallel
 from sklearn.multioutput import MultiOutputRegressor, _fit_estimator
 from sklearn.utils.fixes import delayed

@@ -57,3 +57,5 @@ schedule==1.1.0
 #WS Messages
 websockets==10.3
 janus==1.0.0
+
+scikit-learn-intelex==2021.6.3

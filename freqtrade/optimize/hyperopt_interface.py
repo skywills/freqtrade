@@ -2,6 +2,8 @@
 IHyperOpt interface
 This module defines the interface to apply for hyperopt
 """
+from sklearnex import patch_sklearn
+patch_sklearn()
 import logging
 import math
 from abc import ABC
