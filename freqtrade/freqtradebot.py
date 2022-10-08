@@ -653,10 +653,6 @@ class FreqtradeBot(LoggingMixin):
         trade_side: LongShort = 'short' if is_short else 'long'
         pos_adjust = trade is not None
 
-        if pair == 'MATIC/USDT':
-            # Fix Amount Too High Error on get_max_leverage
-            stake_amount = min(stake_amount, 8000000)
-
         enter_limit_requested, stake_amount, leverage = self.get_valid_enter_price_and_stake(
             pair, price, stake_amount, trade_side, enter_tag, trade, order_adjust, leverage_)
 

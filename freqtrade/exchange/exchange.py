@@ -2380,11 +2380,12 @@ class Exchange:
                         #
 
                 else:  # if on the last tier
-                    if stake_amount > tier['maxNotional']:
-                        # If stake is > than max tradeable amount
-                        raise InvalidOrderException(f'Amount {stake_amount} too high for {pair}')
-                    else:
-                        return tier['maxLeverage']
+                    # if stake_amount > tier['maxNotional']:
+                    #     # If stake is > than max tradeable amount
+                    #     raise InvalidOrderException(f'Amount {stake_amount} too high for {pair}')
+                    # else:
+                    #     return tier['maxLeverage']
+                    return tier['maxLeverage']
 
             raise OperationalException(
                 'Looped through all tiers without finding a max leverage. Should never be reached'
