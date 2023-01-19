@@ -23,7 +23,7 @@ from tests.exchange.test_exchange import ccxt_exceptionhandlers
 def test_stoploss_order_binance(default_conf, mocker, limitratio, expected, side, trademode):
     api_mock = MagicMock()
     order_id = 'test_prod_buy_{}'.format(randint(0, 10 ** 6))
-    order_type = 'stop_loss_limit' if trademode == TradingMode.SPOT else 'limit'
+    order_type = 'stop_loss_limit' if trademode == TradingMode.SPOT else 'stop'
 
     api_mock.create_order = MagicMock(return_value={
         'id': order_id,
@@ -162,9 +162,6 @@ def test_stoploss_adjust_binance(mocker, default_conf, sl1, sl2, sl3, side):
     }
     assert exchange.stoploss_adjust(sl1, order, side=side)
     assert not exchange.stoploss_adjust(sl2, order, side=side)
-    # Test with invalid order case
-    order['type'] = 'stop_loss'
-    assert not exchange.stoploss_adjust(sl3, order, side=side)
 
 
 def test_fill_leverage_tiers_binance(default_conf, mocker):
