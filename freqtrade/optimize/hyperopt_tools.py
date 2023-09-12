@@ -1,4 +1,3 @@
-import io
 import logging
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -24,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 NON_OPT_PARAM_APPENDIX = "  # value loaded from strategy"
 
+HYPER_PARAMS_FILE_FORMAT = rapidjson.NM_NATIVE | rapidjson.NM_NAN
+
 
 def hyperopt_serializer(x):
     if isinstance(x, np.integer):
@@ -34,7 +35,7 @@ def hyperopt_serializer(x):
     return str(x)
 
 
-class HyperoptStateContainer():
+class HyperoptStateContainer:
     """ Singleton class to track state of hyperopt"""
     state: HyperoptState = HyperoptState.OPTIMIZE
 
@@ -43,7 +44,7 @@ class HyperoptStateContainer():
         cls.state = value
 
 
-class HyperoptTools():
+class HyperoptTools:
 
     @staticmethod
     def get_strategy_filename(config: Config, strategy_name: str) -> Optional[Path]:
@@ -77,8 +78,17 @@ class HyperoptTools():
         with filename.open('w') as f:
             rapidjson.dump(final_params, f, indent=2,
                            default=hyperopt_serializer,
-                           number_mode=rapidjson.NM_NATIVE | rapidjson.NM_NAN
+                           number_mode=HYPER_PARAMS_FILE_FORMAT
                            )
+
+    @staticmethod
+    def load_params(filename: Path) -> Dict:
+        """
+        Load parameters from file
+        """
+        with filename.open('r') as f:
+            params = rapidjson.load(f, number_mode=HYPER_PARAMS_FILE_FORMAT)
+        return params
 
     @staticmethod
     def try_export_params(config: Config, strategy_name: str, params: Dict):
@@ -96,7 +106,7 @@ class HyperoptTools():
         Tell if the space value is contained in the configuration
         """
         # 'trailing' and 'protection spaces are not included in the 'default' set of spaces
-        if space in ('trailing', 'protection'):
+        if space in ('trailing', 'protection', 'trades'):
             return any(s in config['spaces'] for s in [space, 'all'])
         else:
             return any(s in config['spaces'] for s in [space, 'all', 'default'])
@@ -170,7 +180,7 @@ class HyperoptTools():
 
     @staticmethod
     def show_epoch_details(results, total_epochs: int, print_json: bool,
-                           no_header: bool = False, header_str: str = None) -> None:
+                           no_header: bool = False, header_str: Optional[str] = None) -> None:
         """
         Display details of the hyperopt result
         """
@@ -187,9 +197,10 @@ class HyperoptTools():
 
         if print_json:
             result_dict: Dict = {}
-            for s in ['buy', 'sell', 'protection', 'roi', 'stoploss', 'trailing']:
+            for s in ['buy', 'sell', 'protection',
+                      'roi', 'stoploss', 'trailing', 'max_open_trades']:
                 HyperoptTools._params_update_for_json(result_dict, params, non_optimized, s)
-            print(rapidjson.dumps(result_dict, default=str, number_mode=rapidjson.NM_NATIVE))
+            print(rapidjson.dumps(result_dict, default=str, number_mode=HYPER_PARAMS_FILE_FORMAT))
 
         else:
             HyperoptTools._params_pretty_print(params, 'buy', "Buy hyperspace params:",
@@ -201,6 +212,8 @@ class HyperoptTools():
             HyperoptTools._params_pretty_print(params, 'roi', "ROI table:", non_optimized)
             HyperoptTools._params_pretty_print(params, 'stoploss', "Stoploss:", non_optimized)
             HyperoptTools._params_pretty_print(params, 'trailing', "Trailing stop:", non_optimized)
+            HyperoptTools._params_pretty_print(
+                params, 'max_open_trades', "Max Open Trades:", non_optimized)
 
     @staticmethod
     def _params_update_for_json(result_dict, params, non_optimized, space: str) -> None:
@@ -239,7 +252,9 @@ class HyperoptTools():
             if space == "stoploss":
                 stoploss = safe_value_fallback2(space_params, no_params, space, space)
                 result += (f"stoploss = {stoploss}{appendix}")
-
+            elif space == "max_open_trades":
+                max_open_trades = safe_value_fallback2(space_params, no_params, space, space)
+                result += (f"max_open_trades = {max_open_trades}{appendix}")
             elif space == "roi":
                 result = result[:-1] + f'{appendix}\n'
                 minimal_roi_result = rapidjson.dumps({
@@ -259,7 +274,7 @@ class HyperoptTools():
             print(result)
 
     @staticmethod
-    def _space_params(params, space: str, r: int = None) -> Dict:
+    def _space_params(params, space: str, r: Optional[int] = None) -> Dict:
         d = params.get(space)
         if d:
             # Round floats to `r` digits after the decimal point if requested
@@ -417,12 +432,10 @@ class HyperoptTools():
             for i in range(len(trials)):
                 if trials.loc[i]['is_profit']:
                     for j in range(len(trials.loc[i]) - 3):
-                        trials.iat[i, j] = "{}{}{}".format(Fore.GREEN,
-                                                           str(trials.loc[i][j]), Fore.RESET)
+                        trials.iat[i, j] = f"{Fore.GREEN}{str(trials.loc[i][j])}{Fore.RESET}"
                 if trials.loc[i]['is_best'] and highlight_best:
                     for j in range(len(trials.loc[i]) - 3):
-                        trials.iat[i, j] = "{}{}{}".format(Style.BRIGHT,
-                                                           str(trials.loc[i][j]), Style.RESET_ALL)
+                        trials.iat[i, j] = f"{Style.BRIGHT}{str(trials.loc[i][j])}{Style.RESET_ALL}"
 
         trials = trials.drop(columns=['is_initial_point', 'is_best', 'is_profit', 'is_random'])
         if remove_header > 0:
@@ -459,8 +472,8 @@ class HyperoptTools():
             return
 
         try:
-            io.open(csv_file, 'w+').close()
-        except IOError:
+            Path(csv_file).open('w+').close()
+        except OSError:
             logger.error(f"Failed to create CSV file: {csv_file}")
             return
 

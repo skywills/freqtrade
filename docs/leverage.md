@@ -64,10 +64,8 @@ You will also have to pick a "margin mode" (explanation below) - with freqtrade 
 
 ##### Pair namings
 
-Freqtrade follows the [ccxt naming conventions for futures](https://docs.ccxt.com/en/latest/manual.html?#perpetual-swap-perpetual-future).
+Freqtrade follows the [ccxt naming conventions for futures](https://docs.ccxt.com/#/README?id=perpetual-swap-perpetual-future).
 A futures pair will therefore have the naming of `base/quote:settle` (e.g. `ETH/USDT:USDT`).
-
-Binance is currently still an exception to this naming scheme, where pairs are named `ETH/USDT` also for futures markets, but will be aligned as soon as CCXT is ready.
 
 ### Margin mode
 
@@ -91,6 +89,8 @@ One account is used to share collateral between markets (trading pairs). Margin 
 ``` json
 "margin_mode": "cross"
 ```
+
+Please read the [exchange specific notes](exchanges.md) for exchanges that support this mode and how they differ.
 
 ## Set leverage to use
 

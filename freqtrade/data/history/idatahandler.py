@@ -15,8 +15,9 @@ from pandas import DataFrame
 
 from freqtrade import misc
 from freqtrade.configuration import TimeRange
-from freqtrade.constants import ListPairsWithTimeframes, TradeList
-from freqtrade.data.converter import clean_ohlcv_dataframe, trades_remove_duplicates, trim_dataframe
+from freqtrade.constants import DEFAULT_TRADES_COLUMNS, ListPairsWithTimeframes
+from freqtrade.data.converter import (clean_ohlcv_dataframe, trades_convert_types,
+                                      trades_df_remove_duplicates, trim_dataframe)
 from freqtrade.enums import CandleType, TradingMode
 from freqtrade.exchange import timeframe_to_seconds
 
@@ -170,31 +171,41 @@ class IDataHandler(ABC):
         return [cls.rebuild_pair_from_filename(match[0]) for match in _tmp if match]
 
     @abstractmethod
-    def trades_store(self, pair: str, data: TradeList) -> None:
+    def _trades_store(self, pair: str, data: DataFrame) -> None:
         """
         Store trades data (list of Dicts) to file
         :param pair: Pair - used for filename
-        :param data: List of Lists containing trade data,
+        :param data: Dataframe containing trades
                      column sequence as in DEFAULT_TRADES_COLUMNS
         """
 
     @abstractmethod
-    def trades_append(self, pair: str, data: TradeList):
+    def trades_append(self, pair: str, data: DataFrame):
         """
         Append data to existing files
         :param pair: Pair - used for filename
-        :param data: List of Lists containing trade data,
+        :param data: Dataframe containing trades
                      column sequence as in DEFAULT_TRADES_COLUMNS
         """
 
     @abstractmethod
-    def _trades_load(self, pair: str, timerange: Optional[TimeRange] = None) -> TradeList:
+    def _trades_load(self, pair: str, timerange: Optional[TimeRange] = None) -> DataFrame:
         """
         Load a pair from file, either .json.gz or .json
         :param pair: Load trades for this pair
         :param timerange: Timerange to load trades for - currently not implemented
-        :return: List of trades
+        :return: Dataframe containing trades
         """
+
+    def trades_store(self, pair: str, data: DataFrame) -> None:
+        """
+        Store trades data (list of Dicts) to file
+        :param pair: Pair - used for filename
+        :param data: Dataframe containing trades
+                     column sequence as in DEFAULT_TRADES_COLUMNS
+        """
+        # Filter on expected columns (will remove the actual date column).
+        self._trades_store(pair, data[DEFAULT_TRADES_COLUMNS])
 
     def trades_purge(self, pair: str) -> bool:
         """
@@ -208,7 +219,7 @@ class IDataHandler(ABC):
             return True
         return False
 
-    def trades_load(self, pair: str, timerange: Optional[TimeRange] = None) -> TradeList:
+    def trades_load(self, pair: str, timerange: Optional[TimeRange] = None) -> DataFrame:
         """
         Load a pair from file, either .json.gz or .json
         Removes duplicates in the process.
@@ -216,7 +227,10 @@ class IDataHandler(ABC):
         :param timerange: Timerange to load trades for - currently not implemented
         :return: List of trades
         """
-        return trades_remove_duplicates(self._trades_load(pair, timerange=timerange))
+        trades = trades_df_remove_duplicates(self._trades_load(pair, timerange=timerange))
+
+        trades = trades_convert_types(trades)
+        return trades
 
     @classmethod
     def create_dir_if_needed(cls, datadir: Path):
@@ -308,7 +322,7 @@ class IDataHandler(ABC):
             timerange=timerange_startup,
             candle_type=candle_type
         )
-        if self._check_empty_df(pairdf, pair, timeframe, candle_type, warn_no_data, True):
+        if self._check_empty_df(pairdf, pair, timeframe, candle_type, warn_no_data):
             return pairdf
         else:
             enddate = pairdf.iloc[-1]['date']
@@ -316,7 +330,7 @@ class IDataHandler(ABC):
             if timerange_startup:
                 self._validate_pairdata(pair, pairdf, timeframe, candle_type, timerange_startup)
                 pairdf = trim_dataframe(pairdf, timerange_startup)
-                if self._check_empty_df(pairdf, pair, timeframe, candle_type, warn_no_data):
+                if self._check_empty_df(pairdf, pair, timeframe, candle_type, warn_no_data, True):
                     return pairdf
 
             # incomplete candles should only be dropped if we didn't trim the end beforehand.
@@ -374,6 +388,21 @@ class IDataHandler(ABC):
                 logger.warning(f"{pair}, {candle_type}, {timeframe}, "
                                f"data ends at {pairdata.iloc[-1]['date']:%Y-%m-%d %H:%M:%S}")
 
+    def rename_futures_data(
+            self, pair: str, new_pair: str, timeframe: str, candle_type: CandleType):
+        """
+        Temporary method to migrate data from old naming to new naming (BTC/USDT -> BTC/USDT:USDT)
+        Only used for binance to support the binance futures naming unification.
+        """
+
+        file_old = self._pair_data_filename(self._datadir, pair, timeframe, candle_type)
+        file_new = self._pair_data_filename(self._datadir, new_pair, timeframe, candle_type)
+        # print(file_old, file_new)
+        if file_new.exists():
+            logger.warning(f"{file_new} exists already, can't migrate {pair}.")
+            return
+        file_old.rename(file_new)
+
 
 def get_datahandlerclass(datatype: str) -> Type[IDataHandler]:
     """
@@ -403,8 +432,8 @@ def get_datahandlerclass(datatype: str) -> Type[IDataHandler]:
         raise ValueError(f"No datahandler for datatype {datatype} available.")
 
 
-def get_datahandler(datadir: Path, data_format: str = None,
-                    data_handler: IDataHandler = None) -> IDataHandler:
+def get_datahandler(datadir: Path, data_format: Optional[str] = None,
+                    data_handler: Optional[IDataHandler] = None) -> IDataHandler:
     """
     :param datadir: Folder to save data
     :param data_format: dataformat to use
@@ -412,6 +441,6 @@ def get_datahandler(datadir: Path, data_format: str = None,
     """
 
     if not data_handler:
-        HandlerClass = get_datahandlerclass(data_format or 'json')
+        HandlerClass = get_datahandlerclass(data_format or 'feather')
         data_handler = HandlerClass(datadir)
     return data_handler
